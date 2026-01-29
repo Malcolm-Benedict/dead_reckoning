@@ -6,29 +6,27 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Imu
 
-class Deadreckoner(Node):
+class DeadReckoner(Node):
     def __init__(self):
-        super().__init__('dead_reckoner')
+        super().__init__('estimator_node')
         self.dead_reckoning_path_publisher = self.create_publisher(Path, '/dead_reckoning/path', 10)
-        #qos_profile = QoSProfile(
-        #    depth=10,  
-        #    reliability=ReliabilityPolicy.BEST_EFFORT
-        #)
         self.dead_reckoning_odom_publisher = self.create_publisher(Odometry, '/dead_reckoning/odom', 10)
 
-        # create subscriber with "best effort" setting to match turtlebot 
-        self.subscription = self.create_subscription(
-            LaserScan,
-            '/scan', 
-            self.range_callback, 
-            qos_profile)
+        #self.dead_reckoning_odom_publisher = self.create_publisher(Odometry, '/dead_reckoning/odom', 10)
+
+        self.cmd_vel_x = 0
+        self.cmd_vel_y = 0
+        self.cmd_vel_t = 0
+
+        qos_profile = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
+        self.subscription = self.create_subscription(Twist,'/cmd_vel', self.cmd_vel_callback, qos_profile)
         
 def main(args=None):
     rclpy.init(args=args)
-    lidar_node = LidarProcessor()
-    rclpy.spin(lidar_node)
+    estimator_node = DeadReckoner()
+    rclpy.spin(estimator_node)
 
-    lidar_node.destroy_node()
+    estimator_node.destroy_node()
     rclpy.shutdown()
 
 if __name__ == '__main__':
