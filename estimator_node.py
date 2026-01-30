@@ -6,7 +6,7 @@
 import rclpy
 import math as m
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 from nav_msgs.msg import Path, Odometry
 from geometry_msgs.msg import TwistStamped, PoseStamped
 from sensor_msgs.msg import Imu
@@ -22,10 +22,11 @@ class DeadReckoner(Node):
         super().__init__('estimator_node')
 
         #define publishers
-        self.dead_reckoning_path_publisher = self.create_publisher(Path, '/dead_reckoning/path', 10)
-        self.dead_reckoning_odom_publisher = self.create_publisher(Odometry, '/dead_reckoning/odom', 10)
-        self.imu_odom_publisher = self.create_publisher(Odometry, '/imu_integration/odom', 10)
-        self.imu_path_publisher = self.create_publisher(Path, '/imu_integration/path', 10)
+        publisher_qos_profile = QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self.dead_reckoning_path_publisher = self.create_publisher(Path, '/dead_reckoning/path', publisher_qos_profile)
+        self.dead_reckoning_odom_publisher = self.create_publisher(Odometry, '/dead_reckoning/odom', publisher_qos_profile)
+        self.imu_odom_publisher = self.create_publisher(Odometry, '/imu_integration/odom', publisher_qos_profile)
+        self.imu_path_publisher = self.create_publisher(Path, '/imu_integration/path', publisher_qos_profile)
 
         #initialize cmd_vel_callback states to zero
         self.cmd_vel_x = 0.0
@@ -51,9 +52,9 @@ class DeadReckoner(Node):
         self.imu_path_arr = []
 
         #define subscribers
-        qos_profile = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
-        self.cmd_vel_subscription = self.create_subscription(TwistStamped,'/cmd_vel', self.cmd_vel_callback, qos_profile)
-        self.imu_subscription = self.create_subscription(Imu,'/imu', self.imu_callback, qos_profile)
+        subscription_qos_profile = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
+        self.cmd_vel_subscription = self.create_subscription(TwistStamped,'/cmd_vel', self.cmd_vel_callback, subscription_qos_profile)
+        self.imu_subscription = self.create_subscription(Imu,'/imu', self.imu_callback, subscription_qos_profile)
 
     def cmd_vel_callback(self,msg):
         """
@@ -109,13 +110,13 @@ class DeadReckoner(Node):
         self.imu_y = self.imu_y + (self.imu_vy * self.imu_deltaT)
         self.imu_vx = self.imu_vx + (self.imu_ax * self.imu_deltaT)
         self.imu_vy = self.imu_vy + (self.imu_ay * self.imu_deltaT)
-        self.imu_t = self.imu_t + (self.imu_w * self.imu_deltaT)
 
         #update values for next timestamp
-        self.imu_ax = msg.linear_acceleration.x
-        self.imu_ay = msg.linear_acceleration.y
+        self.imu_ax = (msg.linear_acceleration.x * m.cos(self.imu_t)) - (msg.linear_acceleration.y * m.sin(self.imu_t))
+        self.imu_ay = (msg.linear_acceleration.x * m.sin(self.imu_t)) + (msg.linear_acceleration.y * m.cos(self.imu_t))
+        self.imu_t = self.imu_t + (self.imu_w * self.imu_deltaT)
         self.imu_w = msg.angular_velocity.z
-        self.cmd_vel_last_timestamp = msg.header.stamp.sec + (0.000000001 * msg.header.stamp.nanosec)
+        self.imu_last_timestamp = msg.header.stamp.sec + (0.000000001 * msg.header.stamp.nanosec)
 
         #generate pose message
         current_pose = PoseStamped()
@@ -145,6 +146,7 @@ class DeadReckoner(Node):
         self.imu_path_arr.append(current_pose)
         path.poses = self.imu_path_arr
         self.imu_path_publisher.publish(path)
+
 
 def convertEulerToQuaternion(roll,pitch,yaw)-> tuple[float,float,float,float]:
     """
