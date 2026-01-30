@@ -3,8 +3,9 @@ import math as m
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from nav_msgs.msg import Path, Odometry
-from geometry_msgs.msg import TwistStamped, Pose
+from geometry_msgs.msg import TwistStamped, PoseStamped
 from sensor_msgs.msg import Imu
+from rclpy.clock import Clock
 
 class DeadReckoner(Node):
     def __init__(self):
@@ -21,7 +22,7 @@ class DeadReckoner(Node):
         self.cmd_vel_w = 0.0
         self.deltaT = 0.0
         self.last_timestamp = 0.0
-        self.path_arr = []
+        self.dead_reckoning_path_arr = []
 
         qos_profile = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.subscription = self.create_subscription(TwistStamped,'/cmd_vel', self.cmd_vel_callback, qos_profile)
@@ -38,28 +39,35 @@ class DeadReckoner(Node):
         self.last_timestamp = msg.header.stamp.sec + (0.000000001 * msg.header.stamp.nanosec)
         
         #generate pose message
-        current_pose = Pose()
+        current_pose = PoseStamped()
+        current_pose.header.stamp = Clock().now().to_msg()
+        current_pose.header.frame_id = 'odom'
 
-        current_pose.position.x = self.cmd_vel_x
-        current_pose.position.y = self.cmd_vel_y
+        current_pose.pose.position.x = self.cmd_vel_x
+        current_pose.pose.position.y = self.cmd_vel_y
 
         w,x,y,z = convertEulerToQuaternion(0,0,self.cmd_vel_t)
-        current_pose.orientation.w = w
-        current_pose.orientation.x = x
-        current_pose.orientation.y = y
-        current_pose.orientation.z = z
+        current_pose.pose.orientation.w = w
+        current_pose.pose.orientation.x = x
+        current_pose.pose.orientation.y = y
+        current_pose.pose.orientation.z = z
 
         #publish odom message
         odom = Odometry()
-        odom.pose.pose = current_pose
+        odom.header.stamp = Clock().now().to_msg()
+        odom.header.frame_id = 'odom'
+        odom.pose.pose = current_pose.pose
 
         self.dead_reckoning_odom_publisher.publish(odom)
 
         #publish path values
         path = Path()
-        self.path_arr.append(current_pose)
-        path.poses = self.path_arr
+        path.header.stamp = Clock().now().to_msg()
+        path.header.frame_id = 'odom'
+        self.dead_reckoning_path_arr.append(current_pose)
+        path.poses = self.dead_reckoning_path_arr
         self.dead_reckoning_path_publisher.publish(path)
+
 
 def convertEulerToQuaternion(roll,pitch,yaw):
     # deal with quaternions, based on code from
