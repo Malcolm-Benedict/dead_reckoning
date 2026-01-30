@@ -1,3 +1,8 @@
+# Estimator Node
+# Written by Malcolm Benedict, mmbenedi@mtu.edu
+# Last Rev. 1/20/26
+# Set up a ROS2 node to calculate robot position via dead reckoning
+
 import rclpy
 import math as m
 from rclpy.node import Node
@@ -8,13 +13,21 @@ from sensor_msgs.msg import Imu
 from rclpy.clock import Clock
 
 class DeadReckoner(Node):
+    """
+    Calculate a robot position via two dead reckoning methods: integrating incoming /cmd_vel messages 
+    and integrating IMU sensor data.
+    
+    """
     def __init__(self):
         super().__init__('estimator_node')
+
+        #define publishers
         self.dead_reckoning_path_publisher = self.create_publisher(Path, '/dead_reckoning/path', 10)
         self.dead_reckoning_odom_publisher = self.create_publisher(Odometry, '/dead_reckoning/odom', 10)
 
         #self.dead_reckoning_odom_publisher = self.create_publisher(Odometry, '/dead_reckoning/odom', 10)
 
+        #initialize states to zero
         self.cmd_vel_x = 0.0
         self.cmd_vel_y = 0.0
         self.cmd_vel_t = 0.0
@@ -24,15 +37,24 @@ class DeadReckoner(Node):
         self.last_timestamp = 0.0
         self.dead_reckoning_path_arr = []
 
+        #define subscribers
         qos_profile = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.subscription = self.create_subscription(TwistStamped,'/cmd_vel', self.cmd_vel_callback, qos_profile)
 
     def cmd_vel_callback(self,msg):
+        """
+        Handle incoming /cmd_vel messages by calculating current pose data and publishing it to /dead_reckoning/path 
+        and /dead_reckoning/odom as Path and Odometry messages respectively.
+        
+        :param self: self, used to keep it current to the specific node.
+        :param msg: the incoming TwistStamped /cmd_vel message.
+        """
         #calculate current state est.
         self.deltaT = msg.header.stamp.sec + (0.000000001 * msg.header.stamp.nanosec) - self.last_timestamp
         self.cmd_vel_x = self.cmd_vel_x + (self.cmd_vel_v * m.cos(self.cmd_vel_t) * self.deltaT)
         self.cmd_vel_y = self.cmd_vel_y + (self.cmd_vel_v * m.sin(self.cmd_vel_t) * self.deltaT)
         self.cmd_vel_t = self.cmd_vel_t + (self.cmd_vel_w * self.deltaT)
+
         #update values for next timestamp
         self.cmd_vel_v = msg.twist.linear.x
         self.cmd_vel_w = msg.twist.angular.z
@@ -42,10 +64,10 @@ class DeadReckoner(Node):
         current_pose = PoseStamped()
         current_pose.header.stamp = Clock().now().to_msg()
         current_pose.header.frame_id = 'odom'
-
         current_pose.pose.position.x = self.cmd_vel_x
         current_pose.pose.position.y = self.cmd_vel_y
 
+        #get orientation quaternion
         w,x,y,z = convertEulerToQuaternion(0,0,self.cmd_vel_t)
         current_pose.pose.orientation.w = w
         current_pose.pose.orientation.x = x
@@ -57,7 +79,6 @@ class DeadReckoner(Node):
         odom.header.stamp = Clock().now().to_msg()
         odom.header.frame_id = 'odom'
         odom.pose.pose = current_pose.pose
-
         self.dead_reckoning_odom_publisher.publish(odom)
 
         #publish path values
@@ -69,10 +90,17 @@ class DeadReckoner(Node):
         self.dead_reckoning_path_publisher.publish(path)
 
 
-def convertEulerToQuaternion(roll,pitch,yaw):
-    # deal with quaternions, based on code from
-    # https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles#Euler_angles_(in_3-2-1_sequence)_to_quaternion_conversion
-    # This could be done more elegantly with a service call, but the instructions state only one python file
+def convertEulerToQuaternion(roll,pitch,yaw)-> tuple[float,float,float,float]:
+    """
+    Helper function to convert Euler angles to a Quaternion
+    based on code from
+    https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles#Euler_angles_(in_3-2-1_sequence)_to_quaternion_conversion
+    This could be done more elegantly with a service call, but the instructions state only one python file
+
+    :param roll: Rotation about the X axis
+    :param pitch: Rotation about the Y axis
+    :param yaw: Rotation about the Z axis
+    """
     
     cr = m.cos(roll * 0.5)
     sr = m.sin(roll * 0.5)
@@ -87,6 +115,7 @@ def convertEulerToQuaternion(roll,pitch,yaw):
     z = cr * cp * sy - sr * sp * cy
 
     return w,x,y,z
+
 
 def main(args=None):
     rclpy.init(args=args)
