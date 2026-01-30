@@ -106,14 +106,13 @@ class DeadReckoner(Node):
 
     def imu_callback(self,msg):
         self.imu_deltaT = msg.header.stamp.sec + (0.000000001 * msg.header.stamp.nanosec) - self.imu_last_timestamp
-        self.imu_x = self.imu_x + (self.imu_vx * self.imu_deltaT)
-        self.imu_y = self.imu_y + (self.imu_vy * self.imu_deltaT)
-        self.imu_vx = self.imu_vx + (self.imu_ax * self.imu_deltaT)
+        self.imu_x = self.imu_x + (self.imu_vx * m.cos(self.imu_t) * self.imu_deltaT) - (self.imu_vx * m.sin(self.imu_t) * self.imu_deltaT)
+        self.imu_y = self.imu_y + (self.imu_vx * m.sin(self.imu_t) * self.imu_deltaT) + (self.imu_vx * m.cos(self.imu_t) * self.imu_deltaT)
         self.imu_vy = self.imu_vy + (self.imu_ay * self.imu_deltaT)
 
         #update values for next timestamp
-        self.imu_ax = (msg.linear_acceleration.x * m.cos(self.imu_t)) - (msg.linear_acceleration.y * m.sin(self.imu_t))
-        self.imu_ay = (msg.linear_acceleration.x * m.sin(self.imu_t)) + (msg.linear_acceleration.y * m.cos(self.imu_t))
+        self.imu_ax = msg.linear_acceleration.x
+        self.imu_ay = msg.linear_acceleration.y
         self.imu_t = self.imu_t + (self.imu_w * self.imu_deltaT)
         self.imu_w = msg.angular_velocity.z
         self.imu_last_timestamp = msg.header.stamp.sec + (0.000000001 * msg.header.stamp.nanosec)
