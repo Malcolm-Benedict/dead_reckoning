@@ -106,10 +106,12 @@ class DeadReckoner(Node):
 
     def imu_callback(self,msg):
         self.imu_deltaT = msg.header.stamp.sec + (0.000000001 * msg.header.stamp.nanosec) - self.imu_last_timestamp
-        self.imu_x = self.imu_x + (self.imu_vx * m.cos(self.imu_t) * self.imu_deltaT) - (self.imu_vy * m.sin(self.imu_t) * self.imu_deltaT)
-        self.imu_y = self.imu_y + (self.imu_vx * m.sin(self.imu_t) * self.imu_deltaT) + (self.imu_vy * m.cos(self.imu_t) * self.imu_deltaT)
-        self.imu_vy = self.imu_vy + (self.imu_ay * self.imu_deltaT)/100
-        self.imu_vx = self.imu_vx + (self.imu_ax * self.imu_deltaT)/100
+        imu_world_vx = (self.imu_ax * m.cos(self.imu_t)) - (self.imu_ay * m.sin(self.imu_t))
+        imu_world_vy = (self.imu_ax * m.sin(self.imu_t)) + (self.imu_ay * m.cos(self.imu_t))  
+        self.imu_x = self.imu_x + (imu_world_vx * self.imu_deltaT) 
+        self.imu_y = self.imu_y + (imu_world_vy * self.imu_deltaT) 
+        self.imu_vy = self.imu_vy + (self.imu_ay * self.imu_deltaT)
+        self.imu_vx = self.imu_vx + (self.imu_ax * self.imu_deltaT)
 
         #update values for next timestamp
         self.imu_ax = msg.linear_acceleration.x
