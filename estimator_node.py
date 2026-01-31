@@ -1,6 +1,6 @@
 # Estimator Node
 # Written by Malcolm Benedict, mmbenedi@mtu.edu
-# Last Rev. 1/20/26
+# Last Rev. 1/31/26
 # Set up a ROS2 node to calculate robot position via dead reckoning
 
 import rclpy
@@ -105,6 +105,14 @@ class DeadReckoner(Node):
         self.dead_reckoning_path_publisher.publish(path)
 
     def imu_callback(self,msg):
+        """
+        Handle incoming IMU data by integrating to get the current pose data and publishing it to /imu_integration/path 
+        and /imu_integration/odom as Path and Odometry messages respectively.
+        
+        :param self: self, used to keep it current to the specific node.
+        :param msg: the incoming Imu /imu message.
+        """
+        #calculate current state est.
         self.imu_deltaT = msg.header.stamp.sec + (0.000000001 * msg.header.stamp.nanosec) - self.imu_last_timestamp
         imu_world_vx = (self.imu_ax * m.cos(self.imu_t)) - (self.imu_ay * m.sin(self.imu_t))
         imu_world_vy = (self.imu_ax * m.sin(self.imu_t)) + (self.imu_ay * m.cos(self.imu_t))  
@@ -112,11 +120,11 @@ class DeadReckoner(Node):
         self.imu_y = self.imu_y + (imu_world_vy * self.imu_deltaT) 
         self.imu_vy = self.imu_vy + (self.imu_ay * self.imu_deltaT)
         self.imu_vx = self.imu_vx + (self.imu_ax * self.imu_deltaT)
+        self.imu_t = self.imu_t + (self.imu_w * self.imu_deltaT)
 
         #update values for next timestamp
         self.imu_ax = msg.linear_acceleration.x
         self.imu_ay = msg.linear_acceleration.y
-        self.imu_t = self.imu_t + (self.imu_w * self.imu_deltaT)
         self.imu_w = msg.angular_velocity.z
         self.imu_last_timestamp = msg.header.stamp.sec + (0.000000001 * msg.header.stamp.nanosec)
 
@@ -161,7 +169,6 @@ def convertEulerToQuaternion(roll,pitch,yaw)-> tuple[float,float,float,float]:
     :param pitch: Rotation about the Y axis
     :param yaw: Rotation about the Z axis
     """
-    
     cr = m.cos(roll * 0.5)
     sr = m.sin(roll * 0.5)
     cp = m.cos(pitch * 0.5)
@@ -181,7 +188,6 @@ def main(args=None):
     rclpy.init(args=args)
     estimator_node = DeadReckoner()
     rclpy.spin(estimator_node)
-
     estimator_node.destroy_node()
     rclpy.shutdown()
 
