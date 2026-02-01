@@ -14,8 +14,8 @@ from rclpy.clock import Clock
 
 # Some tunable params to improve behavior
 DO_ZERO_IMU = False
-INITIAL_IMU_ANGLE = -(m.pi/4)
-IMU_ANGULAR_VELOCITY_SCALE_FACTOR = 2.0
+INITIAL_IMU_ANGLE = 0
+IMU_ANGULAR_VELOCITY_SCALE_FACTOR = 2.2
 IMU_LINEAR_ACCELERATION_SCALE_FACTOR = 0.1
 
 class DeadReckoner(Node):
