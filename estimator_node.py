@@ -1,16 +1,22 @@
 # Estimator Node
 # Written by Malcolm Benedict, mmbenedi@mtu.edu
-# Last Rev. 1/31/26
+# Last Rev. 2/1/26
 # Set up a ROS2 node to calculate robot position via dead reckoning
 
 import rclpy
 import math as m
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 from nav_msgs.msg import Path, Odometry
 from geometry_msgs.msg import TwistStamped, PoseStamped
 from sensor_msgs.msg import Imu
 from rclpy.clock import Clock
+
+# Some tunable params to improve behavior
+DO_ZERO_IMU = True
+INITIAL_IMU_ANGLE = 0
+IMU_ANGULAR_VELOCITY_SCALE_FACTOR = 1.0
+IMU_LINEAR_ACCELERATION_SCALE_FACTOR = 1.0
 
 class DeadReckoner(Node):
     """
@@ -39,20 +45,26 @@ class DeadReckoner(Node):
         self.cmd_vel_path_arr = []
 
         #initialize imu_callback states to zero
-        self.imu_x = 0.0
-        self.imu_y = 0.0
-        self.imu_t = 0.0
+        self.imu_last_timestamp = 0.0
+        self.imu_deltaT = 0.0
+        self.imu_acc_x = 0.0
+        self.imu_acc_y = 0.0
+        self.imu_ax = 0.0
+        self.imu_ay = 0.0
         self.imu_vx = 0.0
         self.imu_vy = 0.0
         self.imu_w = 0.0
-        self.imu_ax = 0.0
-        self.imu_ay = 0.0
-        self.imu_deltaT = 0.0
-        self.imu_last_timestamp = 0.0
+        self.imu_t = INITIAL_IMU_ANGLE
+        self.imu_x = 0.0
+        self.imu_y = 0.0
         self.imu_path_arr = []
+        self.First = DO_ZERO_IMU
+        self.imu_offset_ax = 0.0
+        self.imu_offset_ay = 0.0
+        self.imu_offset_w = 0.0
 
         #define subscribers
-        subscription_qos_profile = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
+        subscription_qos_profile = QoSProfile(history=HistoryPolicy.KEEP_ALL, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.cmd_vel_subscription = self.create_subscription(TwistStamped,'/cmd_vel', self.cmd_vel_callback, subscription_qos_profile)
         self.imu_subscription = self.create_subscription(Imu,'/imu', self.imu_callback, subscription_qos_profile)
 
@@ -106,26 +118,32 @@ class DeadReckoner(Node):
 
     def imu_callback(self,msg):
         """
-        Handle incoming IMU data by integrating to get the current pose data and publishing it to /imu_integration/path 
+        Handle incoming imu messages by calculating current pose data and publishing it to /imu_integration/path 
         and /imu_integration/odom as Path and Odometry messages respectively.
         
         :param self: self, used to keep it current to the specific node.
         :param msg: the incoming Imu /imu message.
         """
-        #calculate current state est.
-        self.imu_deltaT = msg.header.stamp.sec + (0.000000001 * msg.header.stamp.nanosec) - self.imu_last_timestamp
-        imu_world_vx = (self.imu_ax * m.cos(self.imu_t)) - (self.imu_ay * m.sin(self.imu_t))
-        imu_world_vy = (self.imu_ax * m.sin(self.imu_t)) + (self.imu_ay * m.cos(self.imu_t))  
-        self.imu_x = self.imu_x + (imu_world_vx * self.imu_deltaT) 
-        self.imu_y = self.imu_y + (imu_world_vy * self.imu_deltaT) 
-        self.imu_vy = self.imu_vy + (self.imu_ay * self.imu_deltaT)
-        self.imu_vx = self.imu_vx + (self.imu_ax * self.imu_deltaT)
-        self.imu_t = self.imu_t + (self.imu_w * self.imu_deltaT)
+        # Optionally zero the IMU using the first measurement 
+        if(self.First):
+            self.imu_offset_ax = msg.linear_acceleration.x
+            self.imu_offset_ay = msg.linear_acceleration.y
+            self.First = False
 
-        #update values for next timestamp
-        self.imu_ax = msg.linear_acceleration.x
-        self.imu_ay = msg.linear_acceleration.y
-        self.imu_w = msg.angular_velocity.z
+        # Find position via double integration. This is the most kinematically correct version of the code.
+        self.imu_deltaT = msg.header.stamp.sec + (0.000000001 * msg.header.stamp.nanosec) - self.imu_last_timestamp
+        self.imu_ax = (self.imu_acc_x * m.cos(self.imu_t)) - (self.imu_acc_y * m.sin(self.imu_t))
+        self.imu_ay = (self.imu_acc_x * m.sin(self.imu_t)) + (self.imu_acc_y * m.cos(self.imu_t))
+        self.imu_x = self.imu_x + (self.imu_vx * self.imu_deltaT)
+        self.imu_y = self.imu_y + (self.imu_vy * self.imu_deltaT)
+        self.imu_t = self.imu_t + (self.imu_w * self.imu_deltaT)
+        self.imu_vx = self.imu_vx + (self.imu_ax * self.imu_deltaT)
+        self.imu_vy = self.imu_vy + (self.imu_ay * self.imu_deltaT)
+        
+        #update for next time frame
+        self.imu_acc_x = (msg.linear_acceleration.x - self.imu_offset_ax) * IMU_LINEAR_ACCELERATION_SCALE_FACTOR
+        self.imu_acc_y = (msg.linear_acceleration.y - self.imu_offset_ay) * IMU_LINEAR_ACCELERATION_SCALE_FACTOR
+        self.imu_w = msg.angular_velocity.z * IMU_ANGULAR_VELOCITY_SCALE_FACTOR
         self.imu_last_timestamp = msg.header.stamp.sec + (0.000000001 * msg.header.stamp.nanosec)
 
         #generate pose message
