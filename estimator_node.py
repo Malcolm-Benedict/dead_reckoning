@@ -39,17 +39,6 @@ class DeadReckoner(Node):
         self.cmd_vel_path_arr = []
 
         #initialize imu_callback states to zero
-        self.imu_x = 0.0
-        self.imu_y = 0.0
-        self.imu_t = 0.0
-        self.imu_vx = 0.0
-        self.imu_vy = 0.0
-        self.imu_w = 0.0
-        self.imu_ax = 0.0
-        self.imu_ay = 0.0
-        self.imu_deltaT = 0.0
-        self.imu_last_timestamp = 0.0
-        self.imu_path_arr = []
 
         #define subscribers
         subscription_qos_profile = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
@@ -105,20 +94,7 @@ class DeadReckoner(Node):
         self.dead_reckoning_path_publisher.publish(path)
 
     def imu_callback(self,msg):
-        self.imu_deltaT = msg.header.stamp.sec + (0.000000001 * msg.header.stamp.nanosec) - self.imu_last_timestamp
-        imu_world_vx = (self.imu_ax * m.cos(self.imu_t)) - (self.imu_ay * m.sin(self.imu_t))
-        imu_world_vy = (self.imu_ax * m.sin(self.imu_t)) + (self.imu_ay * m.cos(self.imu_t))  
-        self.imu_x = self.imu_x + (imu_world_vx * self.imu_deltaT) 
-        self.imu_y = self.imu_y + (imu_world_vy * self.imu_deltaT) 
-        self.imu_vy = self.imu_vy + (self.imu_ay * self.imu_deltaT)
-        self.imu_vx = self.imu_vx + (self.imu_ax * self.imu_deltaT)
 
-        #update values for next timestamp
-        self.imu_ax = msg.linear_acceleration.x
-        self.imu_ay = msg.linear_acceleration.y
-        self.imu_t = self.imu_t + (self.imu_w * self.imu_deltaT)
-        self.imu_w = msg.angular_velocity.z
-        self.imu_last_timestamp = msg.header.stamp.sec + (0.000000001 * msg.header.stamp.nanosec)
 
         #generate pose message
         current_pose = PoseStamped()
