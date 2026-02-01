@@ -6,7 +6,7 @@
 import rclpy
 import math as m
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 from nav_msgs.msg import Path, Odometry
 from geometry_msgs.msg import TwistStamped, PoseStamped
 from sensor_msgs.msg import Imu
@@ -39,9 +39,22 @@ class DeadReckoner(Node):
         self.cmd_vel_path_arr = []
 
         #initialize imu_callback states to zero
+        self.imu_last_timestamp = 0.0
+        self.imu_deltaT = 0.0
+        self.imu_acc_x = 0.0
+        self.imu_acc_y = 0.0
+        self.imu_ax = 0.0
+        self.imu_ay = 0.0
+        self.imu_vx = 0.0
+        self.imu_vy = 0.0
+        self.imu_w = 0.0
+        self.imu_t = 0.0
+        self.imu_x = 0.0
+        self.imu_y = 0.0
+        self.imu_path_arr = []
 
         #define subscribers
-        subscription_qos_profile = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
+        subscription_qos_profile = QoSProfile(history=HistoryPolicy.KEEP_ALL, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.cmd_vel_subscription = self.create_subscription(TwistStamped,'/cmd_vel', self.cmd_vel_callback, subscription_qos_profile)
         self.imu_subscription = self.create_subscription(Imu,'/imu', self.imu_callback, subscription_qos_profile)
 
@@ -94,7 +107,20 @@ class DeadReckoner(Node):
         self.dead_reckoning_path_publisher.publish(path)
 
     def imu_callback(self,msg):
-
+        self.imu_deltaT = msg.header.stamp.sec + (0.000000001 * msg.header.stamp.nanosec) - self.imu_last_timestamp
+        self.imu_ax = (self.imu_acc_x * m.cos(self.imu_t)) - (self.imu_acc_y * m.sin(self.imu_t))
+        self.imu_ay = (self.imu_acc_x * m.sin(self.imu_t)) + (self.imu_acc_y * m.cos(self.imu_t))
+        self.imu_x = self.imu_x + (self.imu_vx * self.imu_deltaT)
+        self.imu_y = self.imu_y + (self.imu_vy * self.imu_deltaT)
+        self.imu_t = self.imu_t + (self.imu_w * self.imu_deltaT)
+        self.imu_vx = self.imu_vx + (self.imu_ax * self.imu_deltaT)
+        self.imu_vy = self.imu_vy + (self.imu_ay * self.imu_deltaT)
+        
+        #update for next time frame
+        self.imu_acc_x = msg.linear_acceleration.x
+        self.imu_acc_y = msg.linear_acceleration.y
+        self.imu_w = msg.angular_velocity.z
+        self.imu_last_timestamp = msg.header.stamp.sec + (0.000000001 * msg.header.stamp.nanosec)
 
         #generate pose message
         current_pose = PoseStamped()
