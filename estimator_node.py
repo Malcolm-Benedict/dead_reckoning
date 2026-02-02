@@ -13,7 +13,7 @@ from sensor_msgs.msg import Imu
 from rclpy.clock import Clock
 
 # Some tunable params to improve behavior
-DO_ZERO_IMU = True
+DO_ZERO_IMU = False
 INITIAL_IMU_ANGLE = 0
 IMU_ANGULAR_VELOCITY_SCALE_FACTOR = 1.0
 IMU_LINEAR_ACCELERATION_SCALE_FACTOR = 1.0
