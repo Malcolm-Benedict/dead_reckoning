@@ -15,8 +15,8 @@ from rclpy.clock import Clock
 # Some tunable params to improve behavior
 DO_ZERO_IMU = False
 INITIAL_IMU_ANGLE = 0
-IMU_ANGULAR_VELOCITY_SCALE_FACTOR = 2.2
-IMU_LINEAR_ACCELERATION_SCALE_FACTOR = 0.1
+IMU_ANGULAR_VELOCITY_SCALE_FACTOR = 1.0
+IMU_LINEAR_ACCELERATION_SCALE_FACTOR = 1.0
 
 class DeadReckoner(Node):
     """
@@ -47,8 +47,8 @@ class DeadReckoner(Node):
         #initialize imu_callback states to zero
         self.imu_last_timestamp = 0.0
         self.imu_deltaT = 0.0
-        self.imu_vel_x = 0.0
-        self.imu_vel_y = 0.0
+        self.imu_acc_x = 0.0
+        self.imu_acc_y = 0.0
         self.imu_ax = 0.0
         self.imu_ay = 0.0
         self.imu_vx = 0.0
@@ -130,21 +130,20 @@ class DeadReckoner(Node):
             self.imu_offset_ay = msg.linear_acceleration.y
             self.First = False
 
-        # Find position via double integration. This version of the code translates velocity, rather than acceleration into the world frame.
+        # Find position via double integration. This is the most kinematically correct version of the code.
         self.imu_deltaT = msg.header.stamp.sec + (0.000000001 * msg.header.stamp.nanosec) - self.imu_last_timestamp
-        self.imu_vx = (self.imu_vel_x * m.cos(self.imu_t)) - (self.imu_vel_y * m.sin(self.imu_t))
-        self.imu_vy = (self.imu_vel_x * m.sin(self.imu_t)) + (self.imu_vel_y * m.cos(self.imu_t))
+        self.imu_ax = (self.imu_acc_x * m.cos(self.imu_t)) - (self.imu_acc_y * m.sin(self.imu_t))
+        self.imu_ay = (self.imu_acc_x * m.sin(self.imu_t)) + (self.imu_acc_y * m.cos(self.imu_t))
         self.imu_x = self.imu_x + (self.imu_vx * self.imu_deltaT)
         self.imu_y = self.imu_y + (self.imu_vy * self.imu_deltaT)
-        self.imu_t = self.imu_t + (self.imu_w * self.imu_deltaT * IMU_ANGULAR_VELOCITY_SCALE_FACTOR)
-        self.imu_vel_x = self.imu_vel_x + (self.imu_ax * self.imu_deltaT *IMU_LINEAR_ACCELERATION_SCALE_FACTOR)
-        self.imu_vel_y  = self.imu_vel_y + (self.imu_ay * self.imu_deltaT * IMU_LINEAR_ACCELERATION_SCALE_FACTOR)
+        self.imu_t = self.imu_t + (self.imu_w * self.imu_deltaT)
+        self.imu_vx = self.imu_vx + (self.imu_ax * self.imu_deltaT)
+        self.imu_vy = self.imu_vy + (self.imu_ay * self.imu_deltaT)
         
         #update for next time frame
-        self.imu_ax = msg.linear_acceleration.x - self.imu_offset_ax 
-        self.imu_ay = msg.linear_acceleration.y - self.imu_offset_ay
-        self.imu_w = msg.angular_velocity.z 
-        #print(self.imu_t) debug
+        self.imu_acc_x = (msg.linear_acceleration.x - self.imu_offset_ax) * IMU_LINEAR_ACCELERATION_SCALE_FACTOR
+        self.imu_acc_y = (msg.linear_acceleration.y - self.imu_offset_ay) * IMU_LINEAR_ACCELERATION_SCALE_FACTOR
+        self.imu_w = msg.angular_velocity.z * IMU_ANGULAR_VELOCITY_SCALE_FACTOR
         self.imu_last_timestamp = msg.header.stamp.sec + (0.000000001 * msg.header.stamp.nanosec)
 
         #generate pose message
@@ -188,6 +187,7 @@ def convertEulerToQuaternion(roll,pitch,yaw)-> tuple[float,float,float,float]:
     :param pitch: Rotation about the Y axis
     :param yaw: Rotation about the Z axis
     """
+    
     cr = m.cos(roll * 0.5)
     sr = m.sin(roll * 0.5)
     cp = m.cos(pitch * 0.5)
@@ -207,6 +207,7 @@ def main(args=None):
     rclpy.init(args=args)
     estimator_node = DeadReckoner()
     rclpy.spin(estimator_node)
+
     estimator_node.destroy_node()
     rclpy.shutdown()
 
